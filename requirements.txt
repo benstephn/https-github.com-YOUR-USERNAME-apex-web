@@ -1,0 +1,3 @@
+# Apex Web Development runs on the Python standard library only.
+# No third-party packages are required — this file just tells the
+# host (Render) to use the Python runtime.

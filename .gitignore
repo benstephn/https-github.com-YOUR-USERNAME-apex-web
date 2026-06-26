@@ -1,0 +1,7 @@
+# Runtime data — created automatically, not committed
+apex.db
+apex.db-journal
+uploads/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy | Apex Web Development</title>
+<meta name="description" content="Privacy Policy for Apex Web Development.">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236d8bff'/%3E%3Cstop offset='1' stop-color='%2337e0c5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M16 7l7 18h-3.2l-1.4-4h-4.8l-1.4 4H8z M14.4 18h3.2L16 13z' fill='%230a0c12'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="bg-fx"></div>
+<div class="grid-fx"></div>
+<header class="nav scrolled">
+  <div class="wrap nav-inner">
+    <a href="/" class="logo"><span class="mark"><svg viewBox="0 0 32 32"><path d="M16 6l8 20h-3.6l-1.5-4.3h-5.8L11.6 26H8z M14.1 18.3h3.8L16 12.6z" fill="currentColor"/></svg></span><span>Apex</span></a>
+    <div class="nav-cta"><a href="/" class="btn btn-ghost">← Back to site</a></div>
+  </div>
+</header>
+<div class="wrap">
+  <article class="legal" id="legal"><p style="color:var(--muted)">Loading…</p></article>
+</div>
+<footer>
+  <div class="wrap"><div class="foot-bottom"><span id="footCopy">© Apex Web Development</span><span>Apex Web Development</span></div></div>
+</footer>
+<script>
+(function () {
+  function mdToHtml(md) {
+    const esc = s => s.replace(/[&<>]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
+    const lines = md.split("\n"); let html = "", inList = false;
+    const inline = t => esc(t)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/_(.+?)_/g, "<em>$1</em>");
+    for (let raw of lines) {
+      const line = raw.trim();
+      if (!line) { if (inList) { html += "</ul>"; inList = false; } continue; }
+      if (line.startsWith("### ")) { if (inList) { html += "</ul>"; inList = false; } html += "<h3>" + inline(line.slice(4)) + "</h3>"; }
+      else if (line.startsWith("## ")) { if (inList) { html += "</ul>"; inList = false; } html += "<h2>" + inline(line.slice(3)) + "</h2>"; }
+      else if (line.startsWith("# ")) { if (inList) { html += "</ul>"; inList = false; } html += "<h1>" + inline(line.slice(2)) + "</h1>"; }
+      else if (line.startsWith("- ")) { if (!inList) { html += "<ul>"; inList = true; } html += "<li>" + inline(line.slice(2)) + "</li>"; }
+      else { if (inList) { html += "</ul>"; inList = false; } html += "<p>" + inline(line) + "</p>"; }
+    }
+    if (inList) html += "</ul>";
+    return html;
+  }
+  fetch("/api/content").then(r => r.json()).then(c => {
+    const md = (c.privacy || "").trim() || "## Privacy Policy\n\nThis policy is being finalized. Please contact us with any questions.";
+    document.getElementById("legal").innerHTML =
+      '<a href="/" class="back-link">← Back to Apex</a>' + mdToHtml(md);
+    document.getElementById("footCopy").textContent =
+      "© " + new Date().getFullYear() + " " + ((c.business && c.business.name) || "Apex Web Development") + ". All rights reserved.";
+    document.title = "Privacy Policy | " + ((c.business && c.business.name) || "Apex Web Development");
+  }).catch(() => { document.getElementById("legal").innerHTML = "<p>Unable to load policy.</p>"; });
+})();
+</script>
+</body>
+</html>
