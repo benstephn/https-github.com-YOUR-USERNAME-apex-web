@@ -25,6 +25,14 @@ UPLOADS = os.path.join(ROOT, "uploads")
 DB_PATH = os.path.join(ROOT, "apex.db")
 PORT = int(os.environ.get("PORT", "8080"))
 
+# Storage: use Postgres when DATABASE_URL is set (production / Render),
+# otherwise fall back to a local SQLite file (offline development).
+USE_PG = bool(os.environ.get("DATABASE_URL"))
+psycopg2 = None
+if USE_PG:
+    import psycopg2
+    import psycopg2.extras
+
 os.makedirs(UPLOADS, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -156,24 +164,52 @@ Questions about your privacy or this policy? Contact Ben at Apex Web Development
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
+class CurWrap:
+    """Cursor wrapper: makes execute() chainable and translates ? -> %s for Postgres."""
+    def __init__(self, cur): self._c = cur
+    def execute(self, sql, params=()):
+        if USE_PG:
+            sql = sql.replace("?", "%s")
+        self._c.execute(sql, params)
+        return self
+    def fetchone(self): return self._c.fetchone()
+    def fetchall(self): return self._c.fetchall()
+    def __getattr__(self, n): return getattr(self._c, n)
+
+class ConnWrap:
+    def __init__(self, conn): self._conn = conn
+    def cursor(self):
+        if USE_PG:
+            return CurWrap(self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
+        return CurWrap(self._conn.cursor())
+    def commit(self): self._conn.commit()
+    def close(self): self._conn.close()
+    def __getattr__(self, n): return getattr(self._conn, n)
+
 def db():
+    if USE_PG:
+        return ConnWrap(psycopg2.connect(os.environ["DATABASE_URL"]))
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    return ConnWrap(conn)
 
 def init_db():
     conn = db()
     c = conn.cursor()
+    pk = "SERIAL PRIMARY KEY" if USE_PG else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    blob = "BYTEA" if USE_PG else "BLOB"
     c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, created INTEGER)")
     c.execute("""CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY, name TEXT, email TEXT, created INTEGER, last_activity INTEGER)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, conv_id TEXT, sender TEXT,
+    c.execute(f"""CREATE TABLE IF NOT EXISTS messages (
+        id {pk}, conv_id TEXT, sender TEXT,
         body TEXT, ts INTEGER, read_by_admin INTEGER DEFAULT 0)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS leads (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT, phone TEXT,
+    c.execute(f"""CREATE TABLE IF NOT EXISTS leads (
+        id {pk}, name TEXT, email TEXT, phone TEXT,
         message TEXT, ts INTEGER, handled INTEGER DEFAULT 0)""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS uploads (
+        name TEXT PRIMARY KEY, mime TEXT, data {blob}, ts INTEGER)""")
     conn.commit()
 
     # Seed content
@@ -298,13 +334,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def serve_upload(self, path):
         name = os.path.basename(path)
-        full = os.path.normpath(os.path.join(UPLOADS, name))
-        if not full.startswith(UPLOADS) or not os.path.isfile(full):
+        conn = db(); c = conn.cursor()
+        try:
+            row = c.execute("SELECT mime,data FROM uploads WHERE name=?", (name,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
             return self._send(404, "404", "text/plain")
-        ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
-        with open(full, "rb") as f:
-            data = f.read()
-        self._send(200, data, ctype, {"Cache-Control": "public, max-age=86400"})
+        ctype = row["mime"] or "application/octet-stream"
+        self._send(200, bytes(row["data"]), ctype, {"Cache-Control": "public, max-age=86400"})
 
     # -- API GET --------------------------------------------------------------
     def api_get(self, path, q):
@@ -447,8 +485,10 @@ class Handler(BaseHTTPRequestHandler):
                     if len(raw) > 8 * 1024 * 1024:
                         return self._json({"error": "Image too large (max 8MB)"}, 400)
                     fname = secrets.token_hex(10) + ext
-                    with open(os.path.join(UPLOADS, fname), "wb") as f:
-                        f.write(raw)
+                    blob = psycopg2.Binary(raw) if USE_PG else sqlite3.Binary(raw)
+                    c.execute("INSERT INTO uploads(name,mime,data,ts) VALUES(?,?,?,?)",
+                              (fname, m.group(1), blob, int(time.time())))
+                    conn.commit()
                     return self._json({"url": f"/uploads/{fname}"})
 
                 if path == "/api/admin/reply":

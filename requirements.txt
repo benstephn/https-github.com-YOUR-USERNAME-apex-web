@@ -1,3 +1,4 @@
-# Apex Web Development runs on the Python standard library only.
-# No third-party packages are required — this file just tells the
-# host (Render) to use the Python runtime.
+# The app runs on the Python standard library + Postgres in production.
+# psycopg2 is only used when DATABASE_URL is set (it isn't, locally — local
+# dev uses built-in SQLite, so no install is needed to run python3 server.py).
+psycopg2-binary==2.9.9
