@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Card · Apex Web Development</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2315315e'/%3E%3Cpath d='M7 22 L16 10 L25 22' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#15315e;--blue:#2456c7;--ink:#15315e;--txt:#33415c;--muted:#64728d;--line:#e6ebf3}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#eef2f7;font-family:'Inter',sans-serif;color:var(--txt);padding:40px 20px;display:flex;flex-direction:column;align-items:center;gap:26px}
+  .toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center}
+  .toolbar h1{font-family:'Plus Jakarta Sans',sans-serif;font-size:1.1rem;color:var(--ink);font-weight:700;margin-right:8px}
+  .btn{background:var(--blue);color:#fff;border:none;border-radius:9px;padding:.7rem 1.3rem;font-family:'Inter',sans-serif;font-weight:600;font-size:.95rem;cursor:pointer}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid #d6deeb}
+  .note{font-size:.82rem;color:var(--muted);max-width:480px;text-align:center;line-height:1.6}
+  .sheet{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+  .label{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:8px}
+  /* card = 3.5in x 2in */
+  .card{width:3.5in;height:2in;border-radius:12px;overflow:hidden;position:relative;background:#fff;
+        border:1px solid var(--line);box-shadow:0 20px 44px -24px rgba(20,40,80,.4)}
+  .card.front{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.09in;text-align:center;padding:0 .3in}
+  .card.front .topbar{position:absolute;top:0;left:0;right:0;height:.06in;background:var(--blue)}
+  .mark{width:.62in;height:.62in;border-radius:.16in;background:var(--navy);display:flex;align-items:center;justify-content:center}
+  .mark.sm{width:.32in;height:.32in;border-radius:.1in}
+  .mark svg{width:62%;height:62%}
+  .brand{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:.26in;letter-spacing:-.01in;color:var(--navy)}
+  .tag{font-size:.135in;color:var(--muted)}
+  .accent{width:.6in;height:.035in;border-radius:.03in;background:var(--blue);margin-top:.03in}
+  .card.back{display:flex}
+  .card.back .bar{width:.09in;background:var(--navy)}
+  .back-body{flex:1;padding:.26in .28in;display:flex;flex-direction:column;justify-content:space-between}
+  .row1{display:flex;align-items:center;gap:.1in}
+  .wordmark{font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:.145in;color:var(--muted)}
+  .name{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:.25in;color:var(--navy);line-height:1.1}
+  .title{font-size:.135in;color:var(--blue);font-weight:600;margin-top:.02in}
+  .contact{display:flex;flex-direction:column;gap:.07in;font-size:.135in;color:var(--txt)}
+  .contact div{display:flex;align-items:center;gap:.1in}
+  .contact svg{width:.16in;height:.16in;color:var(--blue);flex-shrink:0}
+  @media print{
+    @page{margin:0}
+    body{background:#fff;padding:0;gap:0}
+    .toolbar,.note,.label{display:none}
+    .sheet{gap:0}
+    .card{box-shadow:none;border:none;border-radius:0;page-break-after:always}
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>Apex business card</h1>
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <a class="btn ghost" href="/">← Back to site</a>
+  </div>
+  <p class="note">Standard 3.5″ × 2″ card. Click “Print / Save as PDF”, choose your printer or “Save as PDF”. For a real print shop, ask them about a 1/8″ bleed — I can export a print-ready file with bleed marks any time.</p>
+
+  <div class="sheet">
+    <div>
+      <div class="label">Front</div>
+      <div class="card front">
+        <div class="topbar"></div>
+        <div class="mark"><svg viewBox="0 0 32 32" fill="none"><path d="M7 22 L16 10 L25 22" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="brand">Apex Web Development</div>
+        <div class="tag">Custom websites that win customers</div>
+        <div class="accent"></div>
+      </div>
+    </div>
+    <div>
+      <div class="label">Back</div>
+      <div class="card back">
+        <div class="bar"></div>
+        <div class="back-body">
+          <div class="row1">
+            <div class="mark sm"><svg viewBox="0 0 32 32" fill="none"><path d="M7 22 L16 10 L25 22" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="wordmark">Apex Web Development</span>
+          </div>
+          <div>
+            <div class="name">Ben Stephan</div>
+            <div class="title">Founder &amp; Web Developer</div>
+          </div>
+          <div class="contact">
+            <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>(403) 402-5016</div>
+            <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>apexwebprojects@gmail.com</div>
+            <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>www.apexweb.ca</div>
+            <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Calgary, Alberta</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin · Apex Web Development</title>
 <meta name="robots" content="noindex,nofollow">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236d8bff'/%3E%3Cstop offset='1' stop-color='%2337e0c5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M16 7l7 18h-3.2l-1.4-4h-4.8l-1.4 4H8z' fill='%230a0c12'/%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2315315e'/%3E%3Cpath d='M7 22 L16 10 L25 22' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <style>
   body{background:var(--bg)}
@@ -18,7 +18,7 @@
   .login-card p{color:var(--muted);text-align:center;font-size:.92rem;margin-bottom:1.6rem}
   .login-card input{width:100%;background:var(--bg-2);border:1px solid var(--line-strong);border-radius:12px;padding:.9rem 1rem;color:var(--txt);font-family:var(--font);font-size:1rem;margin-bottom:1rem}
   .login-card input:focus{outline:none;border-color:var(--brand)}
-  .login-err{color:#ff9a9a;font-size:.9rem;text-align:center;margin-top:.8rem;min-height:1.2rem}
+  .login-err{color:#c0392b;font-size:.9rem;text-align:center;margin-top:.8rem;min-height:1.2rem}
   .hint{color:var(--muted-2);font-size:.8rem;text-align:center;margin-top:1.2rem}
 
   /* app shell */
@@ -29,8 +29,8 @@
   .side .nav-group{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted-2);padding:.9rem .8rem .4rem}
   .tab{display:flex;align-items:center;gap:.7rem;width:100%;background:none;border:none;color:var(--muted);font-family:var(--font);
     font-size:.94rem;font-weight:500;text-align:left;padding:.7rem .8rem;border-radius:10px;cursor:pointer;transition:all .15s;position:relative}
-  .tab:hover{background:rgba(255,255,255,.04);color:var(--txt)}
-  .tab.active{background:var(--grad-soft);color:var(--txt);border:1px solid var(--line-strong)}
+  .tab:hover{background:var(--bg-2);color:var(--ink)}
+  .tab.active{background:var(--blue-soft);color:var(--brand);border:1px solid #d4e2fb}
   .tab .pill{margin-left:auto;background:#ff5a5a;color:#fff;font-size:.72rem;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:none;place-items:center;padding:0 6px}
   .tab .pill.show{display:grid}
   .side .spacer{flex:1}
@@ -55,14 +55,14 @@
   .ed-card-head .idx{font-family:var(--display);font-weight:700;color:var(--muted-2)}
   .icon-btn{background:rgba(255,90,90,.1);border:1px solid rgba(255,90,90,.3);color:#ff9a9a;border-radius:8px;padding:.4rem .8rem;font-size:.85rem;cursor:pointer;font-family:var(--font)}
   .icon-btn:hover{background:rgba(255,90,90,.18)}
-  .add-btn{background:var(--grad-soft);border:1px dashed var(--line-strong);color:var(--txt);border-radius:12px;padding:.9rem;width:100%;cursor:pointer;font-family:var(--font);font-weight:600;font-size:.95rem}
+  .add-btn{background:var(--blue-soft);border:1px dashed var(--line-strong);color:var(--brand);border-radius:12px;padding:.9rem;width:100%;cursor:pointer;font-family:var(--font);font-weight:600;font-size:.95rem}
   .add-btn:hover{border-color:var(--brand)}
   .switch{display:inline-flex;align-items:center;gap:.6rem;cursor:pointer;user-select:none}
   .switch input{display:none}
   .switch .track{width:44px;height:24px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line-strong);position:relative;transition:background .2s}
   .switch .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
-  .switch input:checked + .track{background:var(--grad)}
-  .switch input:checked + .track::after{transform:translateX(20px);background:#0a0c12}
+  .switch input:checked + .track{background:var(--brand)}
+  .switch input:checked + .track::after{transform:translateX(20px);background:#fff}
   .img-edit{display:flex;gap:1rem;align-items:center}
   .img-edit .thumb{width:90px;height:64px;border-radius:8px;border:1px solid var(--line-strong);object-fit:cover;background:var(--bg-2)}
   .img-edit .thumb.empty{display:grid;place-items:center;color:var(--muted-2);font-size:.7rem;text-align:center}
@@ -73,8 +73,8 @@
   .inbox{display:grid;grid-template-columns:300px 1fr;gap:1.2rem;height:calc(100vh - 160px)}
   .conv-list{border:1px solid var(--line);border-radius:14px;overflow-y:auto;background:var(--panel)}
   .conv{padding:1rem 1.1rem;border-bottom:1px solid var(--line);cursor:pointer;transition:background .15s}
-  .conv:hover{background:rgba(255,255,255,.03)}
-  .conv.active{background:var(--grad-soft)}
+  .conv:hover{background:var(--bg-2)}
+  .conv.active{background:var(--blue-soft)}
   .conv .cn{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
   .conv .cn strong{font-size:.95rem}
   .conv .cn .dot{width:9px;height:9px;border-radius:50%;background:#ff5a5a;flex-shrink:0}
@@ -108,7 +108,7 @@
 <!-- LOGIN -->
 <div class="login-wrap" id="loginWrap">
   <form class="login-card" id="loginForm">
-    <div class="logo"><span class="mark"><svg viewBox="0 0 32 32"><path d="M16 6l8 20h-3.6l-1.5-4.3h-5.8L11.6 26H8z" fill="currentColor"/></svg></span><span>Apex Admin</span></div>
+    <div class="logo"><span class="mark"><svg viewBox="0 0 32 32" fill="none"><path d="M7 22 L16 10 L25 22" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Apex Admin</span></div>
     <h1>Welcome back, Ben</h1>
     <p>Sign in to manage your website.</p>
     <input type="password" id="pw" placeholder="Password" autocomplete="current-password" autofocus>
@@ -121,7 +121,7 @@
 <!-- APP -->
 <div class="admin" id="admin">
   <aside class="side" id="side">
-    <div class="logo"><span class="mark"><svg viewBox="0 0 32 32"><path d="M16 6l8 20h-3.6l-1.5-4.3h-5.8L11.6 26H8z" fill="currentColor"/></svg></span><span>Apex Admin</span></div>
+    <div class="logo"><span class="mark"><svg viewBox="0 0 32 32" fill="none"><path d="M7 22 L16 10 L25 22" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Apex Admin</span></div>
     <div class="nav-group">Messages</div>
     <button class="tab" data-tab="inbox">💬 Chat Inbox <span class="pill" id="pillInbox"></span></button>
     <button class="tab" data-tab="leads">📥 Quote Requests <span class="pill" id="pillLeads"></span></button>

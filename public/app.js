@@ -91,9 +91,11 @@
       : `<div class="career-empty">No open positions right now — but I'm always glad to hear from talented people. Reach out any time.</div>`;
 
     // contact block
+    const webHref = b.website ? (/^https?:\/\//.test(b.website) ? b.website : "https://" + b.website) : "";
     $("#ctaContact").innerHTML = `
-      <a href="${telHref(phone)}"><span class="ci">📞</span><span>${esc(fmtPhone(phone))}<span class="sub">Call or text Ben directly</span></span></a>
+      <a href="${telHref(phone)}"><span class="ci">📞</span><span>${esc(fmtPhone(phone))}<span class="sub">Call or text ${esc((b.owner || "Ben").split(" ")[0])} directly</span></span></a>
       <a href="mailto:${esc(b.email)}"><span class="ci">✉</span><span>${esc(b.email)}<span class="sub">Email me your project</span></span></a>
+      ${b.website ? `<a href="${esc(webHref)}"><span class="ci">🌐</span><span>${esc(b.website)}<span class="sub">Apex on the web</span></span></a>` : ""}
       <a href="#"><span class="ci">📍</span><span>${esc(b.location)}<span class="sub">${esc(b.hours || "")}</span></span></a>`;
 
     // footer

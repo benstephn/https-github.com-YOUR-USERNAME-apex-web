@@ -33,10 +33,11 @@ os.makedirs(UPLOADS, exist_ok=True)
 DEFAULT_CONTENT = {
     "business": {
         "name": "Apex Web Development",
-        "owner": "Ben",
+        "owner": "Ben Stephan",
         "tagline": "Websites that make local businesses look like the industry leaders they are.",
         "phone": "403-402-5016",
-        "email": "ben@apexwebdevelopment.ca",
+        "email": "apexwebprojects@gmail.com",
+        "website": "www.apexweb.ca",
         "location": "Calgary, Alberta — serving businesses everywhere",
         "hours": "Mon–Fri 9am–6pm MT"
     },
@@ -113,7 +114,7 @@ DEFAULT_CONTENT = {
 
 DEFAULT_PRIVACY = """## Privacy Policy
 
-_Last updated: this policy applies to apexwebdevelopment.ca and all services provided by Apex Web Development ("we", "us", "Ben")._
+_Last updated: this policy applies to www.apexweb.ca and all services provided by Apex Web Development ("we", "us", "Ben Stephan")._
 
 ### 1. Who we are
 Apex Web Development is a custom web design and development business operated by Ben, based in Calgary, Alberta, Canada. You can reach us any time at the phone number or email listed on this website.
