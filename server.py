@@ -43,7 +43,7 @@ DEFAULT_CONTENT = {
         "name": "Apex Web Development",
         "owner": "Ben Stephan",
         "tagline": "Websites that make local businesses look like the industry leaders they are.",
-        "phone": "403-402-5016",
+        "phone": "587-888-7315",
         "email": "apexwebprojects@gmail.com",
         "website": "www.apexweb.ca",
         "location": "Calgary, Alberta — serving businesses everywhere",

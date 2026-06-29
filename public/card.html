@@ -51,10 +51,11 @@
 <body>
   <div class="toolbar">
     <h1>Apex business card</h1>
-    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <button class="btn" id="vcardBtn">＋ Save to my phone</button>
+    <button class="btn ghost" onclick="window.print()">Save as PDF</button>
     <a class="btn ghost" href="/">← Back to site</a>
   </div>
-  <p class="note">Standard 3.5″ × 2″ card. Click “Print / Save as PDF”, choose your printer or “Save as PDF”. For a real print shop, ask them about a 1/8″ bleed — I can export a print-ready file with bleed marks any time.</p>
+  <p class="note"><strong>Save to my phone</strong> adds Ben Stephan straight to your contacts — perfect when we meet. <strong>Save as PDF</strong> downloads a printable copy. Standard 3.5″ × 2″ size.</p>
 
   <div class="sheet">
     <div>
@@ -91,15 +92,34 @@
     </div>
   </div>
 <script>
+(function(){
+  var B = {owner:'Ben Stephan', phone:'5878887315', email:'apexwebprojects@gmail.com', website:'www.apexweb.ca', name:'Apex Web Development'};
+  function fp(p){var d=(p||'').replace(/\D/g,'');return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):p;}
+  function set(id,v){var e=document.getElementById(id);if(e&&v)e.textContent=v;}
+  function paint(){set('cardName',B.owner);set('cardPhone',fp(B.phone));set('cardEmail',B.email);set('cardWeb',B.website);}
+  function vcard(){
+    var name=(B.owner||'Ben Stephan').trim(), parts=name.split(' '), first=parts.shift()||'', last=parts.join(' ');
+    var tel=(B.phone||'').replace(/\D/g,''), telI=tel.length===10?'+1'+tel:tel;
+    var web=B.website||'', webU=web?(/^https?:\/\//.test(web)?web:'https://'+web):'';
+    return ['BEGIN:VCARD','VERSION:3.0','N:'+last+';'+first+';;;','FN:'+name,
+      'ORG:'+(B.name||'Apex Web Development'),'TITLE:Founder & Web Developer',
+      tel?('TEL;TYPE=CELL:'+telI):'', B.email?('EMAIL;TYPE=INTERNET:'+B.email):'',
+      webU?('URL:'+webU):'', 'ADR;TYPE=WORK:;;;Calgary;Alberta;;Canada','END:VCARD'
+    ].filter(Boolean).join('\r\n');
+  }
+  function dl(){
+    var blob=new Blob([vcard()],{type:'text/vcard'}), url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download='Ben-Stephan-Apex.vcf'; document.body.appendChild(a); a.click();
+    setTimeout(function(){URL.revokeObjectURL(url); a.remove();},1500);
+  }
+  paint();
+  var btn=document.getElementById('vcardBtn'); if(btn) btn.addEventListener('click', dl);
   fetch('/api/content').then(function(r){return r.json();}).then(function(c){
-    var b = c.business || {};
-    function fp(p){var d=(p||'').replace(/\D/g,'');return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):p;}
-    function set(id,v){var e=document.getElementById(id);if(e&&v)e.textContent=v;}
-    set('cardName', b.owner);
-    set('cardPhone', fp(b.phone));
-    set('cardEmail', b.email);
-    set('cardWeb', b.website);
+    var b=c.business||{};
+    B={owner:b.owner||B.owner, phone:b.phone||B.phone, email:b.email||B.email, website:b.website||B.website, name:b.name||B.name};
+    paint();
   }).catch(function(){});
+})();
 </script>
 </body>
 </html>
