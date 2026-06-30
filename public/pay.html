@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Make a Payment · Apex Web Development</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2315315e'/%3E%3Cpath d='M7 22 L16 10 L25 22' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .pay-wrap{max-width:560px;margin:0 auto;padding:clamp(30px,6vw,60px) 0}
+  .pay-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:clamp(1.6rem,4vw,2.4rem)}
+  .pay-card h1{font-family:var(--display);font-size:1.7rem;color:var(--ink);margin-bottom:.4rem}
+  .pay-card .sub{color:var(--muted);margin-bottom:1.6rem;font-size:.98rem}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:1.4rem}
+  .preset{border:1px solid var(--line-strong);background:var(--panel-2);border-radius:12px;padding:.85rem 1rem;cursor:pointer;text-align:left;font-family:var(--font);transition:border-color .2s,background .2s}
+  .preset:hover{border-color:var(--brand);background:#fff}
+  .preset.active{border-color:var(--brand);background:var(--blue-soft)}
+  .preset .pn{font-weight:600;color:var(--ink);font-size:.95rem}
+  .preset .pp{color:var(--brand);font-weight:700;font-family:var(--display)}
+  .field{margin-bottom:1.1rem}
+  .field label{display:block;font-size:.85rem;font-weight:600;color:var(--ink);margin-bottom:.45rem}
+  .amount-in{position:relative;display:flex;align-items:center}
+  .amount-in .cur{position:absolute;left:14px;color:var(--muted);font-weight:600;font-size:1.1rem}
+  .amount-in input{width:100%;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:10px;
+    padding:.95rem 3.4rem .95rem 2rem;color:var(--ink);font-family:var(--display);font-size:1.4rem;font-weight:700}
+  .amount-in .code{position:absolute;right:14px;color:var(--muted-2);font-weight:600;font-size:.9rem}
+  .amount-in input:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(36,86,199,.14)}
+  .field input.text{width:100%;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:10px;padding:.8rem 1rem;color:var(--ink);font-family:var(--font);font-size:.98rem}
+  .field input.text:focus{outline:none;border-color:var(--brand);background:#fff}
+  .pay-msg{margin:1rem 0;padding:.85rem 1rem;border-radius:10px;font-size:.92rem;display:none}
+  .pay-msg.err{display:block;background:#fdecec;border:1px solid #f6c9c9;color:#b23b3b}
+  .pay-btn{margin-top:.5rem}
+  .trust{margin-top:1.4rem;text-align:center}
+  .trust .methods{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-bottom:.7rem}
+  .trust .methods span{font-size:.72rem;font-weight:700;color:#3a4a66;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:.3rem .6rem;letter-spacing:.02em}
+  .trust .secured{color:var(--muted-2);font-size:.82rem;display:inline-flex;align-items:center;gap:.4rem}
+  .pay-disabled{text-align:center;padding:1rem 0}
+  .pay-disabled p{color:var(--muted);margin-bottom:1.2rem}
+  .pay-disabled a{color:var(--brand);font-weight:600}
+</style>
+</head>
+<body>
+<div class="bg-fx"></div>
+<header class="nav scrolled">
+  <div class="wrap nav-inner">
+    <a href="/" class="logo"><span class="mark"><svg viewBox="0 0 32 32" fill="none"><path d="M7 22 L16 10 L25 22" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Apex</span></a>
+    <div class="nav-cta"><a href="/" class="btn btn-ghost">← Back to site</a></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="pay-wrap">
+    <div class="pay-card" id="payCard">
+      <h1>Make a Payment</h1>
+      <div class="sub" id="paySub">Pay securely by card or Apple Pay. Choose a package or enter the amount we agreed on.</div>
+
+      <div id="payForm">
+        <div class="presets" id="presets"></div>
+
+        <div class="field">
+          <label for="amount">Amount</label>
+          <div class="amount-in">
+            <span class="cur">$</span>
+            <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0.00">
+            <span class="code" id="curCode">CAD</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="desc">What's this for? <span style="color:var(--muted-2);font-weight:400">(optional)</span></label>
+          <input id="desc" class="text" type="text" maxlength="120" placeholder="e.g. Website deposit — Smith Bakery">
+        </div>
+
+        <div class="pay-msg" id="payMsg"></div>
+
+        <button class="btn btn-primary btn-block btn-lg pay-btn" id="payBtn">Pay securely</button>
+
+        <div class="trust">
+          <div class="methods">
+            <span>Apple Pay</span><span>Google Pay</span><span>VISA</span><span>Mastercard</span><span>Amex</span>
+          </div>
+          <span class="secured">🔒 Payments secured by Stripe — your card details never touch this site.</span>
+        </div>
+      </div>
+
+      <div class="pay-disabled" id="payDisabled" style="display:none">
+        <p>Online payments are being set up right now. Please reach out and we'll sort it out quickly.</p>
+        <a id="disabledContact" href="/">Contact Apex →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s);};
+  var amount=$("#amount"), desc=$("#desc"), msg=$("#payMsg"), btn=$("#payBtn");
+  function showErr(t){msg.className="pay-msg err";msg.textContent=t;}
+  function clearErr(){msg.className="pay-msg";msg.textContent="";}
+
+  Promise.all([
+    fetch("/api/pay/config").then(function(r){return r.json();}).catch(function(){return {enabled:false};}),
+    fetch("/api/content").then(function(r){return r.json();}).catch(function(){return {};})
+  ]).then(function(res){
+    var cfg=res[0]||{}, content=res[1]||{};
+    if(cfg.currency){$("#curCode").textContent=cfg.currency;}
+    if(!cfg.enabled){
+      $("#payForm").style.display="none";
+      $("#payDisabled").style.display="block";
+      var b=content.business||{};
+      if(b.email){$("#disabledContact").href="mailto:"+b.email;$("#disabledContact").textContent="Email "+(b.owner||"us")+" →";}
+      return;
+    }
+    // build presets from pricing
+    var pricing=(content.pricing||[]);
+    var html="";
+    pricing.forEach(function(p){
+      var val=String(p.price||"").replace(/[^0-9.]/g,"");
+      if(!val) return;
+      html+='<button type="button" class="preset" data-amt="'+val+'" data-desc="'+(p.name||"")+' website package">'+
+        '<div class="pn">'+(p.name||"")+'</div><div class="pp">$'+val+'</div></button>';
+    });
+    html+='<button type="button" class="preset" data-amt="" data-desc="Deposit"><div class="pn">Deposit / custom</div><div class="pp">Enter amount</div></button>';
+    $("#presets").innerHTML=html;
+    Array.prototype.forEach.call(document.querySelectorAll(".preset"),function(el){
+      el.addEventListener("click",function(){
+        document.querySelectorAll(".preset").forEach(function(x){x.classList.remove("active");});
+        el.classList.add("active");
+        if(el.dataset.amt){amount.value=el.dataset.amt;}
+        if(el.dataset.desc && !desc.value){desc.value=el.dataset.desc;}
+        clearErr(); amount.focus();
+      });
+    });
+  });
+
+  btn.addEventListener("click",function(){
+    clearErr();
+    var amt=parseFloat(amount.value);
+    if(!amt || amt<1){showErr("Please enter an amount of at least $1.");amount.focus();return;}
+    if(amt>50000){showErr("Please enter an amount under $50,000.");return;}
+    btn.disabled=true; btn.textContent="Redirecting to secure checkout…";
+    fetch("/api/pay/create-checkout",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({amount:amt, description:desc.value.trim()})
+    }).then(function(r){return r.json();}).then(function(j){
+      if(j.url){window.location.href=j.url;}
+      else{showErr(j.error||"Something went wrong. Please try again.");btn.disabled=false;btn.textContent="Pay securely";}
+    }).catch(function(){
+      showErr("Network error. Please try again.");btn.disabled=false;btn.textContent="Pay securely";
+    });
+  });
+})();
+</script>
+</body>
+</html>

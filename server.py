@@ -16,8 +16,9 @@ Features:
 """
 
 import os, json, sqlite3, hashlib, hmac, secrets, base64, mimetypes, time, re
+import urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PUBLIC = os.path.join(ROOT, "public")
@@ -32,6 +33,24 @@ psycopg2 = None
 if USE_PG:
     import psycopg2
     import psycopg2.extras
+
+# Stripe payments (optional — set STRIPE_SECRET_KEY to enable).
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+STRIPE_CURRENCY = os.environ.get("STRIPE_CURRENCY", "cad").strip().lower()
+
+def stripe_post(path, fields):
+    data = urlencode(fields).encode()
+    req = urllib.request.Request("https://api.stripe.com/v1/" + path, data=data)
+    req.add_header("Authorization", "Bearer " + STRIPE_SECRET_KEY)
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode())
+        except Exception:
+            return {"error": {"message": "Payment service error."}}
 
 os.makedirs(UPLOADS, exist_ok=True)
 
@@ -307,9 +326,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_file("admin.html")
         if path == "/privacy" or path == "/privacy/":
             return self.serve_file("privacy.html")
+        if path == "/pay" or path == "/pay/":
+            return self.serve_file("pay.html")
+        if path == "/pay/success" or path == "/pay/success/":
+            return self.serve_file("pay-success.html")
         if path == "/" or path == "":
             return self.serve_file("index.html")
         return self.serve_file(path.lstrip("/"))
+
+    def _base_url(self):
+        if os.environ.get("BASE_URL"):
+            return os.environ["BASE_URL"].rstrip("/")
+        proto = self.headers.get("X-Forwarded-Proto", "http")
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host", "localhost:%d" % PORT)
+        return f"{proto}://{host}"
 
     def do_HEAD(self):
         self.do_GET()
@@ -351,6 +381,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/content":
                 content = json.loads(get_setting(c, "content"))
                 return self._json(content)
+
+            if path == "/api/pay/config":
+                return self._json({"enabled": bool(STRIPE_SECRET_KEY), "currency": STRIPE_CURRENCY.upper()})
 
             if path == "/api/chat/messages":
                 conv_id = (q.get("conv_id") or [""])[0]
@@ -442,6 +475,32 @@ class Handler(BaseHTTPRequestHandler):
                           (name, email, phone, msg, int(time.time())))
                 conn.commit()
                 return self._json({"ok": True})
+
+            if path == "/api/pay/create-checkout":
+                if not STRIPE_SECRET_KEY:
+                    return self._json({"error": "Online payments aren't set up yet. Please contact us."}, 400)
+                try:
+                    cents = int(round(float(body.get("amount")) * 100))
+                except (TypeError, ValueError):
+                    cents = 0
+                if cents < 100 or cents > 5000000:
+                    return self._json({"error": "Please enter an amount between $1 and $50,000."}, 400)
+                desc = (body.get("description") or "").strip()[:200] or "Apex Web Development — project payment"
+                base = self._base_url()
+                sess = stripe_post("checkout/sessions", {
+                    "mode": "payment",
+                    "line_items[0][price_data][currency]": STRIPE_CURRENCY,
+                    "line_items[0][price_data][product_data][name]": desc,
+                    "line_items[0][price_data][unit_amount]": str(cents),
+                    "line_items[0][quantity]": "1",
+                    "billing_address_collection": "auto",
+                    "success_url": base + "/pay/success?session_id={CHECKOUT_SESSION_ID}",
+                    "cancel_url": base + "/pay",
+                })
+                if sess.get("url"):
+                    return self._json({"url": sess["url"]})
+                msg = (sess.get("error") or {}).get("message") or "Could not start checkout. Please try again."
+                return self._json({"error": msg}, 400)
 
             if path == "/api/admin/login":
                 stored = get_setting(c, "admin_pw")

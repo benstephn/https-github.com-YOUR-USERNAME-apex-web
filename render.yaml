@@ -11,3 +11,7 @@ services:
         value: 3.11.9
       - key: DATABASE_URL
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_CURRENCY
+        value: cad
