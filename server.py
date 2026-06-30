@@ -15,7 +15,7 @@ Features:
   - /admin password-protected panel
 """
 
-import os, json, sqlite3, hashlib, hmac, secrets, base64, mimetypes, time, re
+import os, json, sqlite3, hashlib, hmac, secrets, base64, mimetypes, time, re, threading
 import urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode
@@ -33,6 +33,32 @@ psycopg2 = None
 if USE_PG:
     import psycopg2
     import psycopg2.extras
+
+MAX_BODY = 12 * 1024 * 1024          # reject request bodies larger than 12 MB (memory-DoS guard)
+SESSION_TTL = 30 * 24 * 3600         # admin sessions expire after 30 days
+
+# Lightweight in-memory per-IP rate limiter (sliding window).
+_rl_lock = threading.Lock()
+_rl_hits = {}
+
+def rate_ok(key, limit, window):
+    now = time.time()
+    with _rl_lock:
+        if len(_rl_hits) > 20000:        # safety valve against unbounded growth
+            _rl_hits.clear()
+        q = _rl_hits.setdefault(key, [])
+        cutoff = now - window
+        drop = 0
+        for t in q:
+            if t >= cutoff:
+                break
+            drop += 1
+        if drop:
+            del q[:drop]
+        if len(q) >= limit:
+            return False
+        q.append(now)
+        return True
 
 # Stripe payments (optional — set STRIPE_SECRET_KEY to enable).
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
@@ -275,6 +301,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -307,9 +335,29 @@ class Handler(BaseHTTPRequestHandler):
         if not token:
             return False
         conn = db(); c = conn.cursor()
-        row = c.execute("SELECT token FROM sessions WHERE token=?", (token,)).fetchone()
-        conn.close()
-        return bool(row)
+        try:
+            row = c.execute("SELECT created FROM sessions WHERE token=?", (token,)).fetchone()
+            if not row:
+                return False
+            if time.time() - (row["created"] or 0) > SESSION_TTL:   # expire stale/stolen tokens
+                c.execute("DELETE FROM sessions WHERE token=?", (token,))
+                conn.commit()
+                return False
+            return True
+        finally:
+            conn.close()
+
+    def _client_ip(self):
+        xff = self.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[0].strip()
+        return self.client_address[0] if self.client_address else "?"
+
+    def _rl(self, bucket, limit, window):
+        return rate_ok(self._client_ip() + ":" + bucket, limit, window)
+
+    def _too_many(self):
+        return self._json({"error": "Too many requests. Please wait a few minutes and try again."}, 429)
 
     def log_message(self, *a):  # quieter logs
         pass
@@ -345,6 +393,10 @@ class Handler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_POST(self):
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        if length > MAX_BODY:
+            self.close_connection = True
+            return self._json({"error": "Request too large."}, 413)
         u = urlparse(self.path)
         if u.path.startswith("/api/"):
             return self.api_post(u.path)
@@ -439,6 +491,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # ---- public ----
             if path == "/api/chat/start":
+                if not self._rl("chatstart", 15, 300):
+                    return self._too_many()
                 conv_id = secrets.token_hex(12)
                 now = int(time.time())
                 c.execute("INSERT INTO conversations(id,name,email,created,last_activity) VALUES(?,?,?,?,?)",
@@ -447,6 +501,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"conv_id": conv_id})
 
             if path == "/api/chat/send":
+                if not self._rl("chatsend", 40, 300):
+                    return self._too_many()
                 conv_id = body.get("conv_id", "")
                 text = (body.get("body") or "").strip()[:2000]
                 if not conv_id or not text:
@@ -465,6 +521,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
 
             if path == "/api/contact":
+                if not self._rl("contact", 6, 600):
+                    return self._too_many()
                 name = (body.get("name") or "").strip()[:120]
                 email = (body.get("email") or "").strip()[:160]
                 phone = (body.get("phone") or "").strip()[:60]
@@ -477,6 +535,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
 
             if path == "/api/pay/create-checkout":
+                if not self._rl("pay", 15, 600):
+                    return self._too_many()
                 if not STRIPE_SECRET_KEY:
                     return self._json({"error": "Online payments aren't set up yet. Please contact us."}, 400)
                 try:
@@ -499,10 +559,12 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 if sess.get("url"):
                     return self._json({"url": sess["url"]})
-                msg = (sess.get("error") or {}).get("message") or "Could not start checkout. Please try again."
-                return self._json({"error": msg}, 400)
+                print("[stripe] checkout error:", (sess.get("error") or {}).get("message"))
+                return self._json({"error": "We couldn't start checkout right now. Please try again, or contact us to pay another way."}, 400)
 
             if path == "/api/pay/subscribe":
+                if not self._rl("pay", 15, 600):
+                    return self._too_many()
                 if not STRIPE_SECRET_KEY:
                     return self._json({"error": "Online payments aren't set up yet. Please contact us."}, 400)
                 care = (json.loads(get_setting(c, "content")).get("carePlan") or {})
@@ -527,17 +589,20 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 if sess.get("url"):
                     return self._json({"url": sess["url"]})
-                msg = (sess.get("error") or {}).get("message") or "Could not start subscription. Please try again."
-                return self._json({"error": msg}, 400)
+                print("[stripe] subscription error:", (sess.get("error") or {}).get("message"))
+                return self._json({"error": "We couldn't start the subscription right now. Please try again, or contact us."}, 400)
 
             if path == "/api/admin/login":
+                if not self._rl("login", 8, 300):
+                    return self._too_many()
                 stored = get_setting(c, "admin_pw")
                 if verify_pw(body.get("password", ""), stored):
                     token = secrets.token_hex(24)
                     c.execute("INSERT INTO sessions(token,created) VALUES(?,?)", (token, int(time.time())))
                     conn.commit()
+                    secure = "; Secure" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else ""
                     return self._json({"ok": True}, extra={
-                        "Set-Cookie": f"apex_session={token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000"})
+                        "Set-Cookie": f"apex_session={token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000{secure}"})
                 time.sleep(0.5)
                 return self._json({"error": "Incorrect password"}, 401)
 
@@ -601,6 +666,8 @@ class Handler(BaseHTTPRequestHandler):
                     if len(new) < 8:
                         return self._json({"error": "New password must be at least 8 characters"}, 400)
                     set_setting(c, "admin_pw", hash_pw(new))
+                    cur_token = self._cookies().get("apex_session")
+                    c.execute("DELETE FROM sessions WHERE token != ?", (cur_token,))  # log out any other/stolen sessions
                     conn.commit()
                     return self._json({"ok": True})
 
