@@ -502,6 +502,34 @@ class Handler(BaseHTTPRequestHandler):
                 msg = (sess.get("error") or {}).get("message") or "Could not start checkout. Please try again."
                 return self._json({"error": msg}, 400)
 
+            if path == "/api/pay/subscribe":
+                if not STRIPE_SECRET_KEY:
+                    return self._json({"error": "Online payments aren't set up yet. Please contact us."}, 400)
+                care = (json.loads(get_setting(c, "content")).get("carePlan") or {})
+                if care.get("enabled") is False:
+                    return self._json({"error": "The Care Plan isn't available right now."}, 400)
+                try:
+                    cents = int(round(float(str(care.get("price", "")).replace(",", "")) * 100))
+                except (TypeError, ValueError):
+                    cents = 0
+                if cents < 100:
+                    return self._json({"error": "The Care Plan price isn't set up yet."}, 400)
+                base = self._base_url()
+                sess = stripe_post("checkout/sessions", {
+                    "mode": "subscription",
+                    "line_items[0][price_data][currency]": STRIPE_CURRENCY,
+                    "line_items[0][price_data][product_data][name]": "Apex " + (care.get("name") or "Care Plan") + " (monthly)",
+                    "line_items[0][price_data][unit_amount]": str(cents),
+                    "line_items[0][price_data][recurring][interval]": "month",
+                    "line_items[0][quantity]": "1",
+                    "success_url": base + "/pay/success?session_id={CHECKOUT_SESSION_ID}&type=sub",
+                    "cancel_url": base + "/pay",
+                })
+                if sess.get("url"):
+                    return self._json({"url": sess["url"]})
+                msg = (sess.get("error") or {}).get("message") or "Could not start subscription. Please try again."
+                return self._json({"error": msg}, 400)
+
             if path == "/api/admin/login":
                 stored = get_setting(c, "admin_pw")
                 if verify_pw(body.get("password", ""), stored):

@@ -84,6 +84,14 @@
           </div>
           <span class="secured">🔒 Payments secured by Stripe — your card details never touch this site.</span>
         </div>
+
+        <div id="careSection" style="display:none;border-top:1px solid var(--line);margin-top:1.7rem;padding-top:1.6rem">
+          <div style="font-family:var(--display);font-weight:700;color:var(--ink);font-size:1.1rem;margin-bottom:.3rem" id="careName">Monthly Care Plan</div>
+          <div style="color:var(--muted);font-size:.93rem;margin-bottom:1.1rem" id="careBlurb"></div>
+          <div class="pay-msg" id="careMsg"></div>
+          <button class="btn btn-ghost btn-block btn-lg" id="careBtn">Subscribe — <span id="carePrice"></span>/month</button>
+          <div style="text-align:center;color:var(--muted-2);font-size:.78rem;margin-top:.6rem">Billed monthly · cancel anytime</div>
+        </div>
       </div>
 
       <div class="pay-disabled" id="payDisabled" style="display:none">
@@ -134,6 +142,25 @@
         clearErr(); amount.focus();
       });
     });
+
+    // Monthly Care Plan subscription
+    var care=content.carePlan||{};
+    if(care.enabled!==false && String(care.price||"").replace(/[^0-9.]/g,"")){
+      $("#careName").textContent=care.name||"Monthly Care Plan";
+      $("#careBlurb").textContent=care.blurb||"Ongoing updates, hosting help and edits — peace of mind so your site never goes stale.";
+      $("#carePrice").textContent="$"+String(care.price).replace(/[^0-9.,]/g,"");
+      $("#careSection").style.display="block";
+      var careBtn=$("#careBtn"), careMsg=$("#careMsg"), careOrig=careBtn.innerHTML;
+      careBtn.addEventListener("click",function(){
+        careMsg.className="pay-msg"; careMsg.textContent="";
+        careBtn.disabled=true; careBtn.textContent="Redirecting to secure checkout…";
+        fetch("/api/pay/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})
+          .then(function(r){return r.json();}).then(function(j){
+            if(j.url){window.location.href=j.url;}
+            else{careMsg.className="pay-msg err";careMsg.textContent=j.error||"Something went wrong.";careBtn.disabled=false;careBtn.innerHTML=careOrig;}
+          }).catch(function(){careMsg.className="pay-msg err";careMsg.textContent="Network error. Please try again.";careBtn.disabled=false;careBtn.innerHTML=careOrig;});
+      });
+    }
   });
 
   btn.addEventListener("click",function(){

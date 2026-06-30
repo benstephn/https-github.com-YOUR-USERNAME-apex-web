@@ -25,16 +25,21 @@
     <div class="done-check">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
-    <h1>Payment received — thank you!</h1>
-    <p>Your payment to <strong id="biz">Apex Web Development</strong> went through successfully. A receipt has been emailed to you by Stripe. I'll be in touch shortly!</p>
+    <h1 id="doneHead">Payment received — thank you!</h1>
+    <p id="doneBody">Your payment to <strong id="biz">Apex Web Development</strong> went through successfully. A receipt has been emailed to you by Stripe. I'll be in touch shortly!</p>
     <a href="/" class="btn btn-primary btn-lg">Back to website</a>
   </div>
 </div>
 <script>
+  var isSub = /[?&]type=sub/.test(location.search);
+  if(isSub){
+    document.getElementById("doneHead").textContent="You're all set — thank you!";
+    document.getElementById("doneBody").innerHTML='Your monthly Care Plan with <strong id="biz">Apex Web Development</strong> is now active. A receipt has been emailed to you by Stripe, and you can cancel anytime. I\'ll be in touch shortly!';
+  }
   fetch("/api/content").then(function(r){return r.json();}).then(function(c){
     var b=(c.business||{});
-    if(b.name)document.getElementById("biz").textContent=b.name;
-    document.title="Payment Received · "+(b.name||"Apex Web Development");
+    if(b.name && document.getElementById("biz"))document.getElementById("biz").textContent=b.name;
+    document.title=(isSub?"Subscription Active · ":"Payment Received · ")+(b.name||"Apex Web Development");
   }).catch(function(){});
 </script>
 </body>
