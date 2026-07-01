@@ -60,7 +60,14 @@ def rate_ok(key, limit, window):
         q.append(now)
         return True
 
-# Stripe payments (optional — set STRIPE_SECRET_KEY to enable).
+# Secure API key handling (OWASP: Secrets Management)
+# ---------------------------------------------------------------------------
+# ALL secrets come from environment variables — nothing is hard-coded, and the
+# Stripe secret key is used only server-side (it is NEVER sent to the browser;
+# the client only ever gets /api/pay/config -> {enabled, currency}).
+# To ROTATE a key: create a new key in the Stripe dashboard, update the
+# STRIPE_SECRET_KEY env var in Render, redeploy, then revoke the old key. No
+# code change is required. Same pattern for DATABASE_URL.
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
 STRIPE_CURRENCY = os.environ.get("STRIPE_CURRENCY", "cad").strip().lower()
 
@@ -288,6 +295,92 @@ def verify_pw(pw, stored):
     return hmac.compare_digest(hash_pw(pw, salt), stored)
 
 # ---------------------------------------------------------------------------
+# Schema-based input validation  (OWASP: Input Validation / Mass Assignment)
+# ---------------------------------------------------------------------------
+# Every public write endpoint runs its JSON body through validate() with an
+# explicit schema. This enforces: allow-listed fields only (unexpected fields
+# are rejected — blocks mass-assignment), correct types, and length/range
+# limits. Strings are trimmed; nothing is trusted by default.
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+def validate(body, schema):
+    """Validate & sanitize `body` against `schema`. Returns (clean_dict, error_or_None).
+
+    schema field rules: {"type": str|int|float|bool|dict, "required": bool,
+      "min": n, "max": n, "format": "email", "choices": [...], "default": v}
+    For str, min/max are length limits; for numbers, value limits.
+    Unknown top-level fields are rejected (mass-assignment guard).
+    """
+    if not isinstance(body, dict):
+        return None, "Invalid request body."
+    unexpected = [k for k in body.keys() if k not in schema]
+    if unexpected:
+        return None, "Unexpected field(s): " + ", ".join(sorted(unexpected)[:5])
+    clean = {}
+    for field, rule in schema.items():
+        val = body.get(field)
+        missing = field not in body or val is None or (isinstance(val, str) and val.strip() == "")
+        if missing:
+            if rule.get("required"):
+                return None, "Missing required field: " + field
+            clean[field] = rule.get("default")
+            continue
+        t = rule.get("type", str)
+        if t is str:
+            if not isinstance(val, str):
+                return None, field + " must be text."
+            val = val.strip()
+            if len(val) > rule.get("max", 10000):
+                return None, field + " is too long (max " + str(rule.get("max", 10000)) + ")."
+            if len(val) < rule.get("min", 0):
+                return None, field + " is too short."
+            if rule.get("format") == "email" and not EMAIL_RE.match(val):
+                return None, "Please enter a valid email address."
+            if "choices" in rule and val not in rule["choices"]:
+                return None, "Invalid value for " + field + "."
+        elif t in (int, float):
+            if isinstance(val, bool):
+                return None, field + " must be a number."
+            try:
+                val = float(val) if t is float else int(val)
+            except (TypeError, ValueError):
+                return None, field + " must be a number."
+            if "min" in rule and val < rule["min"]:
+                return None, field + " is too small."
+            if "max" in rule and val > rule["max"]:
+                return None, field + " is too large."
+        elif t is bool:
+            if not isinstance(val, bool):
+                return None, field + " must be true or false."
+        elif t is dict:
+            if not isinstance(val, dict):
+                return None, field + " must be an object."
+            if len(json.dumps(val)) > rule.get("max", 2_000_000):
+                return None, field + " is too large."
+        clean[field] = val
+    return clean, None
+
+# Per-endpoint input schemas (allow-listed fields, types, length/range limits).
+S_CHAT_START = {"name": {"type": str, "max": 80}, "email": {"type": str, "max": 120}}
+S_CHAT_SEND  = {"conv_id": {"type": str, "required": True, "max": 64},
+                "body": {"type": str, "required": True, "min": 1, "max": 2000},
+                "name": {"type": str, "max": 80}, "email": {"type": str, "max": 120}}
+S_CONTACT    = {"name": {"type": str, "required": True, "min": 1, "max": 120},
+                "email": {"type": str, "max": 160, "format": "email"},
+                "phone": {"type": str, "max": 60}, "message": {"type": str, "max": 3000}}
+S_PAY        = {"amount": {"type": float, "required": True, "min": 1, "max": 50000},
+                "description": {"type": str, "max": 200}}
+S_LOGIN      = {"password": {"type": str, "required": True, "max": 200}}
+S_CONTENT    = {"content": {"type": dict, "required": True, "max": 1_500_000}}
+S_UPLOAD     = {"data": {"type": str, "required": True, "max": 16_000_000}}
+S_REPLY      = {"conv_id": {"type": str, "required": True, "max": 64},
+                "body": {"type": str, "required": True, "min": 1, "max": 2000}}
+S_LEAD       = {"id": {"type": int, "required": True, "min": 1}, "handled": {"type": bool, "default": True}}
+S_PW         = {"current": {"type": str, "required": True, "max": 200},
+                "new": {"type": str, "required": True, "min": 8, "max": 200}}
+S_NONE       = {}   # endpoints that take no body — still reject unexpected fields
+
+# ---------------------------------------------------------------------------
 # Request handler
 # ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
@@ -303,6 +396,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        # Content-Security-Policy (OWASP: mitigates XSS + clickjacking). 'unsafe-inline'
+        # is required because the site uses inline styles/handlers; external script
+        # injection, framing, and untrusted origins are still blocked.
+        self.send_header("Content-Security-Policy",
+                         "default-src 'self'; "
+                         "script-src 'self' 'unsafe-inline'; "
+                         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                         "font-src 'self' https://fonts.gstatic.com; "
+                         "img-src 'self' data:; "
+                         "connect-src 'self'; "
+                         "form-action 'self'; base-uri 'self'; frame-ancestors 'none'")
+        self.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -310,7 +415,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, obj, code=200, extra=None):
-        self._send(code, json.dumps(obj), "application/json", extra)
+        # API responses may contain private data (leads, chats) — never cache them.
+        headers = {"Cache-Control": "no-store"}
+        if extra:
+            headers.update(extra)
+        self._send(code, json.dumps(obj), "application/json", headers)
 
     def _read_json(self):
         length = int(self.headers.get("Content-Length", "0") or 0)
@@ -348,9 +457,13 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _client_ip(self):
+        # Behind Render's proxy the trustworthy client IP is the RIGHTMOST
+        # X-Forwarded-For entry — the one the proxy itself appended. Any value a
+        # client tries to spoof ends up on the left, so taking the last entry
+        # stops attackers from rotating a fake IP to bypass the per-IP limits.
         xff = self.headers.get("X-Forwarded-For", "")
         if xff:
-            return xff.split(",")[0].strip()
+            return xff.split(",")[-1].strip()
         return self.client_address[0] if self.client_address else "?"
 
     def _rl(self, bucket, limit, window):
@@ -428,6 +541,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- API GET --------------------------------------------------------------
     def api_get(self, path, q):
+        # Baseline per-IP rate limit for ALL read endpoints (graceful 429).
+        # Generous: the chat widget and admin inbox poll a few times per minute.
+        if not self._rl("api_get", 240, 60):
+            return self._too_many()
         conn = db(); c = conn.cursor()
         try:
             if path == "/api/content":
@@ -438,8 +555,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"enabled": bool(STRIPE_SECRET_KEY), "currency": STRIPE_CURRENCY.upper()})
 
             if path == "/api/chat/messages":
-                conv_id = (q.get("conv_id") or [""])[0]
-                after = int((q.get("after") or ["0"])[0])
+                conv_id = (q.get("conv_id") or [""])[0][:64]
+                try:
+                    after = max(0, int((q.get("after") or ["0"])[0]))
+                except (TypeError, ValueError):
+                    after = 0
                 if not conv_id:
                     return self._json({"messages": []})
                 rows = c.execute(
@@ -451,6 +571,9 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/admin/"):
                 if not self._is_admin():
                     return self._json({"error": "unauthorized"}, 401)
+                # User-based (per-session) rate limit, on top of the per-IP one.
+                if not rate_ok("adminu:" + self._cookies().get("apex_session", ""), 300, 60):
+                    return self._too_many()
 
                 if path == "/api/admin/me":
                     return self._json({"ok": True})
@@ -464,7 +587,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"conversations": [dict(r) for r in rows]})
 
                 if path == "/api/admin/conversation":
-                    conv_id = (q.get("conv_id") or [""])[0]
+                    conv_id = (q.get("conv_id") or [""])[0][:64]
                     c.execute("UPDATE messages SET read_by_admin=1 WHERE conv_id=? AND sender='visitor'", (conv_id,))
                     conn.commit()
                     rows = c.execute("SELECT id,sender,body,ts FROM messages WHERE conv_id=? ORDER BY id", (conv_id,)).fetchall()
@@ -487,50 +610,58 @@ class Handler(BaseHTTPRequestHandler):
     # -- API POST -------------------------------------------------------------
     def api_post(self, path):
         body = self._read_json()
+        # Baseline per-IP rate limit for ALL write endpoints (graceful 429).
+        if not self._rl("api_post", 60, 60):
+            return self._too_many()
         conn = db(); c = conn.cursor()
         try:
             # ---- public ----
             if path == "/api/chat/start":
                 if not self._rl("chatstart", 15, 300):
                     return self._too_many()
+                data, err = validate(body, S_CHAT_START)
+                if err:
+                    return self._json({"error": err}, 400)
                 conv_id = secrets.token_hex(12)
                 now = int(time.time())
                 c.execute("INSERT INTO conversations(id,name,email,created,last_activity) VALUES(?,?,?,?,?)",
-                          (conv_id, (body.get("name") or "Visitor")[:80], (body.get("email") or "")[:120], now, now))
+                          (conv_id, data.get("name") or "Visitor", data.get("email") or "", now, now))
                 conn.commit()
                 return self._json({"conv_id": conv_id})
 
             if path == "/api/chat/send":
                 if not self._rl("chatsend", 40, 300):
                     return self._too_many()
-                conv_id = body.get("conv_id", "")
-                text = (body.get("body") or "").strip()[:2000]
-                if not conv_id or not text:
-                    return self._json({"error": "missing"}, 400)
+                data, err = validate(body, S_CHAT_SEND)
+                if err:
+                    return self._json({"error": err}, 400)
+                conv_id, text = data["conv_id"], data["body"]
+                # User-based limit: cap messages per conversation even across IPs.
+                if not rate_ok("conv:" + conv_id, 30, 300):
+                    return self._too_many()
                 row = c.execute("SELECT id FROM conversations WHERE id=?", (conv_id,)).fetchone()
                 if not row:
                     return self._json({"error": "no conversation"}, 404)
                 now = int(time.time())
                 c.execute("INSERT INTO messages(conv_id,sender,body,ts) VALUES(?,?,?,?)", (conv_id, "visitor", text, now))
                 c.execute("UPDATE conversations SET last_activity=? WHERE id=?", (now, conv_id))
-                if body.get("name"):
-                    c.execute("UPDATE conversations SET name=? WHERE id=?", (body["name"][:80], conv_id))
-                if body.get("email"):
-                    c.execute("UPDATE conversations SET email=? WHERE id=?", (body["email"][:120], conv_id))
+                if data.get("name"):
+                    c.execute("UPDATE conversations SET name=? WHERE id=?", (data["name"], conv_id))
+                if data.get("email"):
+                    c.execute("UPDATE conversations SET email=? WHERE id=?", (data["email"], conv_id))
                 conn.commit()
                 return self._json({"ok": True})
 
             if path == "/api/contact":
                 if not self._rl("contact", 6, 600):
                     return self._too_many()
-                name = (body.get("name") or "").strip()[:120]
-                email = (body.get("email") or "").strip()[:160]
-                phone = (body.get("phone") or "").strip()[:60]
-                msg = (body.get("message") or "").strip()[:3000]
-                if not name or not (email or phone):
-                    return self._json({"error": "Please add your name and a way to reach you."}, 400)
+                data, err = validate(body, S_CONTACT)
+                if err:
+                    return self._json({"error": err}, 400)
+                if not (data.get("email") or data.get("phone")):
+                    return self._json({"error": "Please add an email or phone so we can reach you."}, 400)
                 c.execute("INSERT INTO leads(name,email,phone,message,ts) VALUES(?,?,?,?,?)",
-                          (name, email, phone, msg, int(time.time())))
+                          (data["name"], data.get("email") or "", data.get("phone") or "", data.get("message") or "", int(time.time())))
                 conn.commit()
                 return self._json({"ok": True})
 
@@ -539,13 +670,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._too_many()
                 if not STRIPE_SECRET_KEY:
                     return self._json({"error": "Online payments aren't set up yet. Please contact us."}, 400)
-                try:
-                    cents = int(round(float(body.get("amount")) * 100))
-                except (TypeError, ValueError):
-                    cents = 0
-                if cents < 100 or cents > 5000000:
+                data, err = validate(body, S_PAY)
+                if err:
+                    return self._json({"error": err}, 400)
+                cents = int(round(data["amount"] * 100))
+                if cents < 100 or cents > 5000000:   # defense-in-depth (schema already bounds it)
                     return self._json({"error": "Please enter an amount between $1 and $50,000."}, 400)
-                desc = (body.get("description") or "").strip()[:200] or "Apex Web Development — project payment"
+                desc = data.get("description") or "Apex Web Development — project payment"
                 base = self._base_url()
                 sess = stripe_post("checkout/sessions", {
                     "mode": "payment",
@@ -567,6 +698,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._too_many()
                 if not STRIPE_SECRET_KEY:
                     return self._json({"error": "Online payments aren't set up yet. Please contact us."}, 400)
+                _, err = validate(body, S_NONE)   # takes no input; reject any injected fields
+                if err:
+                    return self._json({"error": err}, 400)
                 care = (json.loads(get_setting(c, "content")).get("carePlan") or {})
                 if care.get("enabled") is False:
                     return self._json({"error": "The Care Plan isn't available right now."}, 400)
@@ -595,8 +729,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/admin/login":
                 if not self._rl("login", 8, 300):
                     return self._too_many()
+                data, err = validate(body, S_LOGIN)
+                if err:
+                    return self._json({"error": err}, 400)
                 stored = get_setting(c, "admin_pw")
-                if verify_pw(body.get("password", ""), stored):
+                if verify_pw(data["password"], stored):
                     token = secrets.token_hex(24)
                     c.execute("INSERT INTO sessions(token,created) VALUES(?,?)", (token, int(time.time())))
                     conn.commit()
@@ -610,6 +747,9 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/admin/"):
                 if not self._is_admin():
                     return self._json({"error": "unauthorized"}, 401)
+                # User-based (per-session) rate limit, on top of the per-IP one.
+                if not rate_ok("adminu:" + self._cookies().get("apex_session", ""), 240, 60):
+                    return self._too_many()
 
                 if path == "/api/admin/logout":
                     token = self._cookies().get("apex_session")
@@ -618,36 +758,45 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": True}, extra={"Set-Cookie": "apex_session=; Path=/; Max-Age=0"})
 
                 if path == "/api/admin/content":
-                    # full content replacement
-                    new = body.get("content")
-                    if not isinstance(new, dict):
-                        return self._json({"error": "bad content"}, 400)
-                    set_setting(c, "content", json.dumps(new))
+                    # Full content replacement (admin-trusted; still type + size checked).
+                    data, err = validate(body, S_CONTENT)
+                    if err:
+                        return self._json({"error": err}, 400)
+                    set_setting(c, "content", json.dumps(data["content"]))
                     conn.commit()
                     return self._json({"ok": True})
 
                 if path == "/api/admin/upload":
-                    data_url = body.get("data", "")
-                    m = re.match(r"data:(image/[\w.+-]+);base64,(.*)$", data_url, re.S)
+                    data, err = validate(body, S_UPLOAD)
+                    if err:
+                        return self._json({"error": err}, 400)
+                    m = re.match(r"data:(image/[\w.+-]+);base64,(.*)$", data["data"], re.S)
                     if not m:
-                        return self._json({"error": "invalid image"}, 400)
-                    ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
-                           "image/gif": ".gif", "image/svg+xml": ".svg"}.get(m.group(1), ".img")
-                    raw = base64.b64decode(m.group(2))
+                        return self._json({"error": "Invalid image data."}, 400)
+                    # Strict MIME allow-list — raster only. SVG is rejected (can carry
+                    # scripts → stored-XSS risk when served inline).
+                    ALLOWED = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}
+                    mime = m.group(1)
+                    if mime not in ALLOWED:
+                        return self._json({"error": "Only PNG, JPG, WEBP or GIF images are allowed."}, 400)
+                    try:
+                        raw = base64.b64decode(m.group(2), validate=True)
+                    except (base64.binascii.Error, ValueError):
+                        return self._json({"error": "Invalid image data."}, 400)
                     if len(raw) > 8 * 1024 * 1024:
-                        return self._json({"error": "Image too large (max 8MB)"}, 400)
-                    fname = secrets.token_hex(10) + ext
+                        return self._json({"error": "Image too large (max 8MB)."}, 400)
+                    fname = secrets.token_hex(10) + ALLOWED[mime]
                     blob = psycopg2.Binary(raw) if USE_PG else sqlite3.Binary(raw)
                     c.execute("INSERT INTO uploads(name,mime,data,ts) VALUES(?,?,?,?)",
-                              (fname, m.group(1), blob, int(time.time())))
+                              (fname, mime, blob, int(time.time())))
                     conn.commit()
                     return self._json({"url": f"/uploads/{fname}"})
 
                 if path == "/api/admin/reply":
-                    conv_id = body.get("conv_id", "")
-                    text = (body.get("body") or "").strip()[:2000]
-                    if not conv_id or not text:
-                        return self._json({"error": "missing"}, 400)
+                    data, err = validate(body, S_REPLY)
+                    if err:
+                        return self._json({"error": err}, 400)
+                    conv_id, text = data["conv_id"], data["body"]
                     now = int(time.time())
                     c.execute("INSERT INTO messages(conv_id,sender,body,ts) VALUES(?,?,?,?)", (conv_id, "admin", text, now))
                     c.execute("UPDATE conversations SET last_activity=? WHERE id=?", (now, conv_id))
@@ -655,17 +804,20 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": True})
 
                 if path == "/api/admin/lead_handled":
-                    c.execute("UPDATE leads SET handled=? WHERE id=?", (1 if body.get("handled", True) else 0, body.get("id")))
+                    data, err = validate(body, S_LEAD)
+                    if err:
+                        return self._json({"error": err}, 400)
+                    c.execute("UPDATE leads SET handled=? WHERE id=?", (1 if data["handled"] else 0, data["id"]))
                     conn.commit()
                     return self._json({"ok": True})
 
                 if path == "/api/admin/password":
-                    cur = body.get("current", ""); new = body.get("new", "")
-                    if not verify_pw(cur, get_setting(c, "admin_pw")):
+                    data, err = validate(body, S_PW)
+                    if err:
+                        return self._json({"error": err}, 400)
+                    if not verify_pw(data["current"], get_setting(c, "admin_pw")):
                         return self._json({"error": "Current password is incorrect"}, 401)
-                    if len(new) < 8:
-                        return self._json({"error": "New password must be at least 8 characters"}, 400)
-                    set_setting(c, "admin_pw", hash_pw(new))
+                    set_setting(c, "admin_pw", hash_pw(data["new"]))
                     cur_token = self._cookies().get("apex_session")
                     c.execute("DELETE FROM sessions WHERE token != ?", (cur_token,))  # log out any other/stolen sessions
                     conn.commit()
@@ -676,8 +828,20 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
 
+def _startup_checks():
+    """Warn about insecure defaults at boot (OWASP: secure defaults)."""
+    conn = db(); c = conn.cursor()
+    try:
+        if verify_pw("changeme123", get_setting(c, "admin_pw") or ""):
+            print("  ⚠  Admin password is still the default 'changeme123' — change it in Admin → Settings.")
+    finally:
+        conn.close()
+    print("  ℹ  Payments:", "enabled" if STRIPE_SECRET_KEY else "disabled (set STRIPE_SECRET_KEY to enable)")
+    print("  ✓  Secrets loaded from environment; none are exposed to the browser.")
+
 def main():
     init_db()
+    _startup_checks()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print("\n  ✦ Apex Web Development is running")
     print(f"    Site   →  http://localhost:{PORT}")
