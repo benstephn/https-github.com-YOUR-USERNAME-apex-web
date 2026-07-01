@@ -68,12 +68,20 @@
     $("#aboutAvatar").textContent = (b.owner || "B").charAt(0).toUpperCase();
     $("#aboutSign").textContent = `— ${b.owner || "Ben"}, ${b.name || "Apex"}`;
 
-    // testimonials
-    $("#quotesGrid").innerHTML = (c.testimonials || []).map((t, i) =>
-      `<div class="qcard reveal ${["", "d1", "d2"][i % 3]}">
-        <div class="stars">★★★★★</div><p>"${esc(t.quote)}"</p>
-        <div class="who"><div class="a">${esc((t.name || "?").charAt(0))}</div>
-        <div><div class="n">${esc(t.name)}</div><div class="r">${esc(t.role)}</div></div></div></div>`).join("");
+    // testimonials — auto-advancing slider (content stays admin-editable)
+    const quotes = (c.testimonials || []);
+    $("#quotesGrid").innerHTML = `
+      <div class="q-slider" id="qSlider">
+        <div class="q-track" id="qTrack">${quotes.map(t =>
+          `<div class="q-slide"><div class="qcard">
+            <div class="stars">★★★★★</div><p>"${esc(t.quote)}"</p>
+            <div class="who"><div class="a">${esc((t.name || "?").charAt(0))}</div>
+            <div><div class="n">${esc(t.name)}</div><div class="r">${esc(t.role)}</div></div></div>
+          </div></div>`).join("")}</div>
+      </div>
+      <div class="q-dots" id="qDots">${quotes.map((_, i) =>
+        `<button data-i="${i}" aria-label="Testimonial ${i + 1}"></button>`).join("")}</div>`;
+    initQuoteSlider(quotes.length);
 
     // faq
     $("#faqList").innerHTML = (c.faq || []).map(f =>
@@ -109,6 +117,87 @@
     document.title = `${b.name || "Apex Web Development"} | Custom Websites for Local Businesses`;
 
     initReveal(); initFaq();
+    initCounters(); initRotator(c); initFolioNav(); initTilt();
+  }
+
+  // ---------- engagement effects ----------
+  function initQuoteSlider(count) {
+    if (!count) return;
+    const track = $("#qTrack"), dots = Array.from(document.querySelectorAll("#qDots button"));
+    let idx = 0, timer = null;
+    function go(i) {
+      idx = (i + count) % count;
+      track.style.transform = `translateX(-${idx * 100}%)`;
+      dots.forEach((d, n) => d.classList.toggle("on", n === idx));
+    }
+    function play() { stop(); timer = setInterval(() => go(idx + 1), 5000); }
+    function stop() { if (timer) clearInterval(timer); timer = null; }
+    dots.forEach(d => d.addEventListener("click", () => { go(+d.dataset.i); play(); }));
+    const slider = $("#qSlider");
+    slider.addEventListener("mouseenter", stop);
+    slider.addEventListener("mouseleave", play);
+    go(0); play();
+  }
+
+  function initCounters() {
+    // count-up animation on the hero stats when they scroll into view
+    const nums = document.querySelectorAll("#heroStats .num");
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        obs.unobserve(e.target);
+        const full = e.target.textContent;
+        const m = full.match(/^([\d.,]+)(.*)$/);
+        if (!m) return;
+        const target = parseFloat(m[1].replace(/,/g, "")), suffix = m[2];
+        const dec = (m[1].split(".")[1] || "").length;
+        const t0 = performance.now(), dur = 1300;
+        (function tick(now) {
+          const p = Math.min(1, (now - t0) / dur), ease = 1 - Math.pow(1 - p, 3);
+          e.target.textContent = (target * ease).toFixed(dec) + suffix;
+          if (p < 1) requestAnimationFrame(tick); else e.target.textContent = full;
+        })(t0);
+      });
+    }, { threshold: 0.4 });
+    nums.forEach(n => obs.observe(n));
+  }
+
+  function initRotator(c) {
+    const el = $("#rotateWord");
+    if (!el) return;
+    const words = (c.services || []).map(s => s.title).filter(Boolean);
+    if (!words.length) { el.closest(".specialty").style.display = "none"; return; }
+    let i = 0;
+    el.textContent = words[0];
+    setInterval(() => {
+      el.classList.add("out");
+      setTimeout(() => {
+        i = (i + 1) % words.length;
+        el.textContent = words[i];
+        el.classList.remove("out");
+      }, 300);
+    }, 2800);
+  }
+
+  function initFolioNav() {
+    const grid = $("#folioGrid"), prev = $("#folioPrev"), next = $("#folioNext");
+    if (!grid || !prev || !next) return;
+    const step = () => (grid.querySelector(".folio-card") ? grid.querySelector(".folio-card").offsetWidth + 26 : 400);
+    prev.addEventListener("click", () => grid.scrollBy({ left: -step(), behavior: "smooth" }));
+    next.addEventListener("click", () => grid.scrollBy({ left: step(), behavior: "smooth" }));
+  }
+
+  function initTilt() {
+    if (!window.matchMedia || !matchMedia("(pointer:fine)").matches) return;
+    document.querySelectorAll(".folio-card").forEach(card => {
+      card.addEventListener("mousemove", e => {
+        const r = card.getBoundingClientRect();
+        const rx = ((e.clientY - r.top) / r.height - 0.5) * -6;
+        const ry = ((e.clientX - r.left) / r.width - 0.5) * 6;
+        card.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-4px)`;
+      });
+      card.addEventListener("mouseleave", () => { card.style.transform = ""; });
+    });
   }
 
   function highlight(h) {
@@ -185,7 +274,14 @@
   }
   function initNav() {
     const nav = $("#nav");
-    window.addEventListener("scroll", () => nav.classList.toggle("scrolled", window.scrollY > 20));
+    const bar = $("#scrollProgress");
+    window.addEventListener("scroll", () => {
+      nav.classList.toggle("scrolled", window.scrollY > 20);
+      if (bar) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        bar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + "%";
+      }
+    });
     $("#burger").addEventListener("click", () => $("#navLinks").classList.toggle("mobile-open"));
     $("#navLinks").addEventListener("click", e => { if (e.target.tagName === "A") $("#navLinks").classList.remove("mobile-open"); });
   }

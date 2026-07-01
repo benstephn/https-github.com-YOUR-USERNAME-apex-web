@@ -130,7 +130,7 @@ DEFAULT_CONTENT = {
         {"icon": "⚙", "title": "Care & Maintenance", "desc": "Ongoing updates, hosting help, edits, and peace of mind so your site never goes stale."}
     ],
     "pricing": [
-        {"name": "Starter", "price": "799", "period": "one-time", "blurb": "Perfect for a clean, professional one-page presence.",
+        {"name": "Starter", "price": "999", "period": "one-time", "blurb": "Perfect for a clean, professional one-page presence.",
          "features": ["Single-page custom design", "Mobile responsive", "Contact form + click-to-call", "Basic SEO setup", "Up to 5 sections"], "featured": False, "cta": "Start here"},
         {"name": "Business", "price": "1,499", "period": "one-time", "blurb": "The complete multi-page site most local businesses need.",
          "features": ["Up to 6 custom pages", "Premium custom design & animation", "Gallery / portfolio section", "On-page SEO + Google setup", "Live chat integration", "1 month free support"], "featured": True, "cta": "Most popular"},
